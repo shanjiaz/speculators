@@ -396,6 +396,7 @@ def test_dataset_getitem_v1_format(tmp_path: Path):
 
     raw_item = dataset[0]
     assert raw_item is not None
+    assert not isinstance(raw_item, GenerationFailure)
     item = shift_batch(raw_item)
 
     for key, value in item.items():

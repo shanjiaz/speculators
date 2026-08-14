@@ -8,8 +8,9 @@ include = ["*"]
 
 [project]
 name = "hs-connectors"
-dynamic = ["version"]          # was: version = "0.1.0"
+dynamic = ["version"]
 requires-python = ">=3.10"
+authors = [ { name = "Red Hat"} ]
 dependencies = [
     "safetensors",
     "torch",

@@ -124,3 +124,26 @@ def test_create_mask_each_query_sees_its_own_block():
     )
 
     assert bool(dense[0, 0].any(dim=-1).all())
+
+
+def test_block_causal_mask_hides_future_synthetic_positions():
+    document_ids = torch.zeros(8, dtype=torch.long)
+    anchors = torch.tensor([2])
+    mask_mod, q_len, kv_len = create_anchor_block_mask_mod(
+        document_ids,
+        total_seq_len=8,
+        anchor_positions=anchors,
+        block_size=4,
+        block_causal=True,
+    )
+
+    mask = torch.zeros(q_len, kv_len, dtype=torch.bool)
+    index = torch.zeros((), dtype=torch.long)
+    for query in range(q_len):
+        for key in range(kv_len):
+            mask[query, key] = mask_mod(
+                index, index, torch.tensor(query), torch.tensor(key)
+            )
+
+    synthetic = mask[:, 8:]
+    torch.testing.assert_close(synthetic, torch.ones(4, 4, dtype=torch.bool).tril())

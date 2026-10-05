@@ -11,6 +11,7 @@ def create_anchor_block_mask_mod(
     block_size: int,
     sliding_window: int | None = None,
     sliding_window_non_causal: bool = False,
+    block_causal: bool = False,
 ):
     """
     Build a flex-attention mask mod where each query block corresponds to one anchor.
@@ -39,8 +40,11 @@ def create_anchor_block_mask_mod(
     Returns:
         mask_mod, q_len, kv_len
     """
-    # Always use non_causal for full attn
-    non_causal = sliding_window is None or sliding_window_non_causal
+    # Existing DFlash variants keep full attention bidirectional. DSpine opts
+    # into a causal block mask for every layer.
+    non_causal = not block_causal and (
+        sliding_window is None or sliding_window_non_causal
+    )
 
     device = document_ids.device
     anchor_positions = anchor_positions.to(device=device, dtype=torch.long).contiguous()

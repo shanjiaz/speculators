@@ -1,6 +1,6 @@
 # Train a Speculator
 
-This tutorial walks you through training a speculator model end to end, from raw data to a checkpoint served in vLLM. It covers **Eagle-3**, **P-EAGLE**, **DFlash**, **DFlash2**, **DSpark**, and **MTP**, in both online and offline training modes.
+This tutorial walks you through training a speculator model end to end, from raw data to a checkpoint served in vLLM. It covers **Eagle-3**, **P-EAGLE**, **DFlash**, **DFlash2**, **DSpark**, **DSpine**, and **MTP**, in both online and offline training modes. DSpine serving still requires a runtime integration; the current implementation covers training, checkpoints, and transition-cache scoring.
 
 Pick an algorithm and a training mode below; the rest of the walkthrough is the same for every combination. The examples use `Qwen/Qwen3-8B` as the target model -- except for MTP, which needs a verifier with native MTP layers and so uses `Qwen/Qwen3.5-9B`. The process is the same for other models.
 
@@ -8,7 +8,7 @@ Pick an algorithm and a training mode below; the rest of the walkthrough is the 
 
 ### 1. Pick an algorithm
 
-All six are lossless: they produce output from the same distribution as the target model. See the [Decision Guide](../algorithms/decision_guide.md) if you're unsure.
+All seven are lossless when paired with their corresponding lossless verification runtime. See the [Decision Guide](../algorithms/decision_guide.md) if you're unsure.
 
 /// tab | Eagle-3
 
@@ -37,6 +37,12 @@ DFlash plus local dynamic convolutions and a candidate selector. The public trai
 /// tab | DSpark
 
 DFlash plus a Markov logit-bias head and a per-position confidence head. ([details](../algorithms/dspark.md))
+
+///
+
+/// tab | DSpine
+
+DFlash plus causal adjacent injection throughout the backbone and transition-cached decoding. Use the [DSpine paper recipe](../algorithms/dspine.md) for its additional training flags. ([details](../algorithms/dspine.md))
 
 ///
 

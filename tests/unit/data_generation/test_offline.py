@@ -24,6 +24,32 @@ def test_check_hidden_states_reports_non_finite_values():
         )
 
 
+@pytest.mark.skipif(not hasattr(torch, "float8_e4m3fn"), reason="float8 is unavailable")
+def test_check_hidden_states_supports_finite_float8():
+    hidden_states = torch.zeros(3, 4, 2).to(torch.float8_e4m3fn)
+
+    check_hidden_states(
+        {"token_ids": torch.tensor([1, 2, 3]), "hidden_states": hidden_states},
+        [1, 2, 3],
+    )
+
+
+@pytest.mark.skipif(not hasattr(torch, "float8_e4m3fn"), reason="float8 is unavailable")
+def test_check_hidden_states_reports_nan_float8():
+    hidden_states = torch.zeros(3, 4, 2)
+    hidden_states[1, 2, 0] = torch.nan
+    hidden_states = hidden_states.to(torch.float8_e4m3fn)
+
+    with pytest.raises(
+        ValueError,
+        match=r"dtype=torch.float8_e4m3fn.*nan_count=1.*affected layer slots=\[2\]",
+    ):
+        check_hidden_states(
+            {"token_ids": torch.tensor([1, 2, 3]), "hidden_states": hidden_states},
+            [1, 2, 3],
+        )
+
+
 # ===== get_indices_to_process Tests =====
 
 

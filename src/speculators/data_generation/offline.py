@@ -6,6 +6,12 @@ from safetensors import safe_open
 
 logger = logging.getLogger(__name__)
 
+_FLOAT8_DTYPES = tuple(
+    dtype
+    for name in ("float8_e4m3fn", "float8_e4m3fnuz", "float8_e5m2", "float8_e5m2fnuz")
+    if (dtype := getattr(torch, name, None)) is not None
+)
+
 
 def check_hidden_states(data: dict, tokens: list[int]):
     required = {"token_ids", "hidden_states"}
@@ -26,11 +32,44 @@ def check_hidden_states(data: dict, tokens: list[int]):
             f" doesn't match num tokens {len(tokens)}"
         )
 
-    lo, hi = torch.aminmax(hs)
-    if bool(torch.isfinite(torch.stack((lo, hi))).all()):
-        return
+    if hs.dtype not in _FLOAT8_DTYPES:
+        lo, hi = torch.aminmax(hs)
+        if bool(torch.isfinite(torch.stack((lo, hi))).all()):
+            return
+        raise ValueError(
+            f"Hidden states contain non-finite values (min={lo}, max={hi})"
+        )
 
-    raise ValueError(f"Hidden states contain non-finite values (min={lo}, max={hi})")
+    nan_count = 0
+    inf_count = 0
+    affected_layers: set[int] = set()
+    rows_per_chunk = 256
+    for start in range(0, hs.shape[0], rows_per_chunk):
+        # Process hidden states in chunks to avoid OOMs
+        chunk = hs[start : start + rows_per_chunk]
+        # CPU isfinite/isnan/isinf kernels do not support float8. Validation runs
+        # after safetensors loads onto CPU, so promote only the small validation
+        # chunk while keeping the cached payload in its compact FP8 format.
+        validation_chunk = chunk.float()
+        finite = torch.isfinite(validation_chunk)
+        if finite.all():
+            continue
+        nan_count += int(torch.isnan(validation_chunk).sum().item())
+        inf_count += int(torch.isinf(validation_chunk).sum().item())
+        if hs.ndim >= 3:  # noqa: PLR2004
+            bad_layers = (~finite).flatten(start_dim=2).any(dim=(0, 2))
+            affected_layers.update(
+                bad_layers.nonzero(as_tuple=False).flatten().tolist()
+            )
+
+    if nan_count or inf_count:
+        details = (
+            f"shape={tuple(hs.shape)}, dtype={hs.dtype}, "
+            f"nan_count={nan_count}, inf_count={inf_count}"
+        )
+        if affected_layers:
+            details += f", affected layer slots={sorted(affected_layers)}"
+        raise ValueError(f"Hidden states contain non-finite values ({details})")
 
 
 def get_existing_hidden_state_indices(output_path: Path) -> list[int]:

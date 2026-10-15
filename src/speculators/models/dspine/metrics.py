@@ -24,13 +24,13 @@ def _weighted_mean(
 def _distribution_terms(
     logits: torch.Tensor,
     target_logits: torch.Tensor,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    target_ids = target_logits.argmax(dim=-1)
+    target_ids: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
     log_q = functional.log_softmax(logits.float(), dim=-1)
     p = functional.softmax(target_logits.float(), dim=-1)
     ce = -log_q.gather(-1, target_ids.unsqueeze(-1)).squeeze(-1)
     l1 = (log_q.exp() - p).abs().sum(dim=-1)
-    return ce, l1, target_ids
+    return ce, l1
 
 
 def compute_dspine_loss(
@@ -39,6 +39,7 @@ def compute_dspine_loss(
     refined_candidate_logits: torch.Tensor,
     candidate_ids: torch.Tensor,
     targets: torch.Tensor,
+    target_ids: torch.Tensor,
     layer_features: list[torch.Tensor],
     target_features: torch.Tensor,
     loss_mask: torch.Tensor,
@@ -50,7 +51,7 @@ def compute_dspine_loss(
     global_step: int,
     transition_min_target_mass: float,
 ) -> tuple[torch.Tensor, dict[str, Any]]:
-    """Compute Equations (6)--(8), including restricted top-k refinement."""
+    """Compute Equations (6)--(8) using sequence labels and teacher distributions."""
     seq_len = unary_logits.shape[1]
     positions = torch.arange(seq_len, device=unary_logits.device) % block_size
     positions = positions.unsqueeze(0)
@@ -58,8 +59,8 @@ def compute_dspine_loss(
         -(positions.to(torch.float32) - 1.0).clamp_min(0.0) / gamma
     )
 
-    unary_ce_values, unary_l1_values, target_ids = _distribution_terms(
-        unary_logits, targets
+    unary_ce_values, unary_l1_values = _distribution_terms(
+        unary_logits, targets, target_ids
     )
     unary_ce = _weighted_mean(unary_ce_values, loss_mask, position_weights)
     unary_l1 = _weighted_mean(unary_l1_values, loss_mask, position_weights)

@@ -180,6 +180,7 @@ class AdjacentCausalInjection(nn.Module):
         pre_injection_states: torch.Tensor,
         *,
         codebook: torch.Tensor | None = None,
+        anchor_token_ids: torch.Tensor | None = None,
         correct_predecessor_ids: torch.Tensor | None = None,
         curriculum_blocks: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -199,6 +200,15 @@ class AdjacentCausalInjection(nn.Module):
                 curriculum_blocks.reshape(-1, 1, 1),
                 correct.to(predecessor.dtype),
                 predecessor,
+            )
+
+        if anchor_token_ids is not None:
+            if codebook is None:
+                raise ValueError("known-anchor injection requires a codebook")
+            anchor_features = self.token_features(codebook, anchor_token_ids)
+            predecessor = torch.cat(
+                (anchor_features.reshape(-1, 1, self.transfer_dim), predecessor[:, 1:]),
+                dim=1,
             )
 
         successors = self._write(

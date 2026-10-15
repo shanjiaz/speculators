@@ -6,6 +6,10 @@ DSpine extends [DFlash](dflash.md) with causal conditioning throughout the paral
 
 Every draft layer first updates the complete anchor-plus-mask block in parallel. It then projects each position into a compact transfer space derived from the frozen verifier LM head. A gated adjacent injection writes the feature predicted at position `t - 1` into position `t`. The readout and residual-write matrices are layer-specific; the message and gate transforms are shared across layers. The anchor remains unchanged, and no operation crosses a draft-block boundary.
 
+The anchor is already a known token: its outgoing message uses its fixed transfer embedding at every layer, independently of the correct-predecessor curriculum. Only masked predecessors use predicted features when curriculum substitution is disabled. This rule must match in training and serving.
+
+Fresh construction through the training CLI enables `known_anchor_injection=true` and saves it in the checkpoint. Loading with `--from-pretrained` honors the saved configuration instead; checkpoints without this field retain the legacy predicted-anchor behavior in both training and serving. Opting an old checkpoint into the corrected mode requires an explicit configuration copy and changes its computation; it is an ablation, not an automatically improved checkpoint.
+
 DSpine uses causal attention inside every synthetic block. Information received from an earlier position at one layer can therefore influence the feature sent to the next position at the following layer, while all positions within a layer remain parallel.
 
 The transfer codebook is built once from normalized verifier output embeddings: the implementation centers them, computes the leading PCA directions, whitens the projected rows, and normalizes them. Predicted features and decided tokens then share one space.
@@ -23,6 +27,8 @@ Training follows the paper:
 1. Unary backbone logits receive a weighted mixture of hard-token cross-entropy and L1 distance to the verifier distribution.
 2. Last-write refinement receives the same objective over the unary top-K set. Cross-entropy is used only when that set contains the target token; L1 is used when the set contains more than the configured minimum verifier mass.
 3. Every layer's post-injection feature receives cosine supervision toward the correct token's transfer embedding.
+
+Hard-token CE, top-K label membership, and embedding supervision use the actual token IDs in the training sequence. The verifier distribution is the soft target for the L1 term; its argmax must not silently replace sequence labels.
 
 The embedding-loss multiplier warms linearly and is scaled by a detached unary cross-entropy. During the first part of training, a block-level curriculum can substitute correct-token predecessor features in the shallow layers; it then decays to zero.
 
@@ -67,7 +73,7 @@ torchrun --standalone --nproc_per_node=8 -m speculators.train \
   --epochs 6
 ```
 
-Before a full run, use `--dry-run`, validate checkpoint construction, and run a one-batch training/save/reload gate with the exact verifier and hidden-state extractor revisions intended for the experiment.
+Before a full run, use `--dry-run`, validate checkpoint construction, and run a one-batch training/save/reload gate with the exact verifier and hidden-state extractor revisions intended for the experiment. `examples/train/dspine_qwen3_8b_dry_run.sh` builds an initialized checkpoint and checks its known-anchor and 15-proposal settings without starting training.
 
 ## See Also
 

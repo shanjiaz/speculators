@@ -23,6 +23,14 @@ class DSpineSpeculatorConfig(DFlashSpeculatorConfig):
         default=True,
         description="Use causal attention inside every synthetic draft block.",
     )
+    known_anchor_injection: bool = Field(
+        default=False,
+        description=(
+            "Use the known anchor's transfer embedding in every injection layer. "
+            "False preserves checkpoints created before this field was introduced; "
+            "new training defaults to True."
+        ),
+    )
     transfer_dim: int = Field(
         default=1024,
         ge=1,

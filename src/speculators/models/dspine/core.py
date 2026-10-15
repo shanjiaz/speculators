@@ -99,6 +99,7 @@ class DSpineDraftModel(DFlashDraftModel):
         """Create DSpine from the shared DFlash-family training arguments."""
         config = DSpineSpeculatorConfig(
             **cls._build_base_config_kwargs("dspine", verifier_config, **kwargs),
+            known_anchor_injection=kwargs.get("known_anchor_injection", True),
             transfer_dim=kwargs.get("transfer_dim", 1024),
             message_dim=kwargs.get("message_dim", 512),
             transition_top_k=kwargs.get("transition_top_k", 16),
@@ -247,6 +248,9 @@ class DSpineDraftModel(DFlashDraftModel):
                 layer_idx,
                 pre_injection,
                 codebook=self.transfer_codebook,
+                anchor_token_ids=(
+                    block_tokens[:, 0] if self.config.known_anchor_injection else None
+                ),
                 correct_predecessor_ids=correct_predecessor_ids,
                 curriculum_blocks=use_curriculum,
             )
@@ -366,7 +370,7 @@ class DSpineDraftModel(DFlashDraftModel):
             num_blocks, self.block_size, self.config.transition_top_k
         )[:, 1:] = refined_logits.gather(-1, candidate_blocks[:, 1:])
 
-        target_ids = targets.argmax(dim=-1)
+        target_ids = input_ids[:, anchored_block_indices]
         target_features = self.injection.token_features(
             self.transfer_codebook, target_ids
         )
@@ -375,6 +379,7 @@ class DSpineDraftModel(DFlashDraftModel):
             refined_candidate_logits=refined_candidate_logits,
             candidate_ids=candidate_ids,
             targets=targets,
+            target_ids=target_ids,
             layer_features=layer_features,
             target_features=target_features,
             loss_mask=aligned_loss_mask,

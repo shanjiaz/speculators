@@ -78,8 +78,13 @@ def create_anchor_block_mask_mod(
         same_doc = (q_doc == kv_doc) & (q_doc != -1)
         before_anchor = kv_base_pos < q_anchor
 
+        # Block-causal drafts use the serving runtime's per-query window,
+        # including the current query in the window size.
+        window_start = q_anchor
+        if block_causal:
+            window_start = window_start + q_idx % block_size + 1
         in_window = (
-            (kv_base_pos >= q_anchor - sliding_window)
+            (kv_base_pos >= window_start - sliding_window)
             if sliding_window is not None
             else True
         )
@@ -99,6 +104,8 @@ def create_anchor_block_mask_mod(
         same = kv_is_block & (q_block == kv_block)
         if not non_causal:
             same = same & (kv_idx <= q_idx + total_seq_len)
+        if block_causal and sliding_window is not None:
+            same = same & (kv_idx > q_idx + total_seq_len - sliding_window)
         return same
 
     return or_masks(base_prefix_mod, same_block_mod), q_len, kv_len

@@ -1,5 +1,6 @@
 """Unit tests for the DFlash anchor-block attention mask."""
 
+import pytest
 import torch
 from torch.nn.attention.flex_attention import create_mask
 
@@ -147,3 +148,32 @@ def test_block_causal_mask_hides_future_synthetic_positions():
 
     synthetic = mask[:, 8:]
     torch.testing.assert_close(synthetic, torch.ones(4, 4, dtype=torch.bool).tril())
+
+
+@pytest.mark.parametrize("anchor", [2, 7, 12])
+@pytest.mark.parametrize("window", [2, 4, 16])
+def test_block_causal_sliding_window_matches_serving(anchor, window):
+    """The prefix and synthetic keys share one per-query causal window."""
+    total_seq_len, block_size = 20, 8
+    document_ids = torch.zeros(total_seq_len, dtype=torch.long)
+    mask_mod, q_len, kv_len = create_anchor_block_mask_mod(
+        document_ids,
+        total_seq_len=total_seq_len,
+        anchor_positions=torch.tensor([anchor]),
+        block_size=block_size,
+        sliding_window=window,
+        block_causal=True,
+    )
+    actual = create_mask(
+        mask_mod, B=None, H=None, Q_LEN=q_len, KV_LEN=kv_len, device="cpu"
+    )[0, 0]
+    expected = torch.zeros_like(actual)
+    for query in range(block_size):
+        absolute_query = anchor + query
+        for key in range(anchor):
+            expected[query, key] = absolute_query - window < key <= absolute_query
+        for key in range(block_size):
+            expected[query, total_seq_len + key] = (
+                absolute_query - window < anchor + key <= absolute_query
+            )
+    torch.testing.assert_close(actual, expected)
